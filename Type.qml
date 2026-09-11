@@ -173,7 +173,7 @@ Item {
           if (typeof list[i] === "string" && list[i].length > 0) clean.push(list[i])
         if (clean.length > 0) root.pool = clean
       } catch (e) {
-        console.warn("jamesd7788.omatype: bad word list:", e)
+        console.warn("io.github.jamesd7788.omatype: bad word list:", e)
       }
     }
   }
@@ -406,7 +406,7 @@ Item {
   }
 
   IpcHandler {
-    target: "jamesd7788.omatype"
+    target: "io.github.jamesd7788.omatype"
     function toggle(): string { root.opened ? root.close() : root.open(); return "ok" }
     function open(): string { root.open(); return "ok" }
     function close(): string { root.close(); return "ok" }
@@ -495,7 +495,7 @@ Item {
           try {
             root.handleKey(event)
           } catch (e) {
-            console.warn("jamesd7788.omatype: key handler threw:", e)
+            console.warn("io.github.jamesd7788.omatype: key handler threw:", e)
             root.close()
           }
         }
