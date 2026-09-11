@@ -207,6 +207,10 @@ const eq = (name, got, want) =>
   ok("words: every entry is a non-empty string",
      list.every(w => typeof w === "string" && w.length > 0))
   ok("words: no entry contains a space", list.every(w => !w.includes(" ")))
+  // No capitals: the list is typed as a burst with no shift reaches, and "I"
+  // (the only capitalised word in the source list) is deliberately removed.
+  ok("words: nothing capitalised", list.every(w => w === w.toLowerCase()))
+  ok("words: no bare I", !list.includes("I"))
 }
 
 // ----------------------------------------------------------------- report

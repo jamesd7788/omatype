@@ -163,7 +163,15 @@ small, rude sibling.
 
 ## Licence
 
-GPL-3.0-or-later, because `english.json` is vendored from
-[Monkeytype](https://github.com/monkeytypegame/monkeytype), which is GPL-3.0.
-Everything else was written from scratch — this is not a fork of Monkeytype and
-shares none of its code.
+GPL-3.0-or-later. `english.json` is the 200 most common English words in
+frequency order, taken from
+[Monkeytype](https://github.com/monkeytypegame/monkeytype) (which is GPL-3.0)
+with `I` removed — it is the only capitalised word in the set and reaching for
+shift mid-burst breaks a short test.
+
+Copying Monkeytype's licence is the cautious choice, not a concession: a
+frequency list of a language's commonest words is a fact about that language
+rather than an authored work. See [WORDS.md](WORDS.md).
+
+The rest was written from scratch — not a fork of Monkeytype, and it shares
+none of its code.
