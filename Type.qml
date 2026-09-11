@@ -81,16 +81,18 @@ Item {
   readonly property int fontPx: Style.font.body === undefined ? 12 : Style.font.body
 
   // Active theme palette, parsed from colors.toml. The shell's Color
-  // singleton carries only five roles; the presets remap across the full set.
+  // singleton carries only five roles; the variants measure across the full set.
   property var themeColors: ({})
-  function roleColor(name, fallback) {
-    var hex = Palette.role(root.themeColors, name)
-    return hex === "" ? fallback : hex
-  }
   readonly property var activePalette: Settings.palette(config)
-  readonly property color typedColor:   roleColor(activePalette.typed,   root.fg)
-  readonly property color pendingColor: roleColor(activePalette.pending, root.dim)
-  readonly property color caretColor:   roleColor(activePalette.caret,   Color.accent)
+  // Reseeded on every deal so `random` is a different draw each test, while
+  // staying fixed for the length of a run — the colours must not shift under
+  // you mid-line.
+  property string paletteSeed: "0"
+  readonly property var resolvedPalette:
+    Palette.resolve(root.themeColors, activePalette.variant, root.paletteSeed)
+  readonly property color typedColor:   resolvedPalette.typed   || root.fg
+  readonly property color pendingColor: resolvedPalette.pending || root.dim
+  readonly property color caretColor:   resolvedPalette.caret   || Color.accent
 
   property var state: Engine.create("")
   property var pool: []
@@ -298,6 +300,7 @@ Item {
       return
     }
     root.dealRetries = 0
+    root.paletteSeed = String(Date.now()) + ":" + String(Math.random())
     root.state = Engine.create(root.fitLine(root.pool, usable))
     root.revision++
     idleGuard.restart()

@@ -14,16 +14,19 @@ var CARETS = ["underline", "outline", "accent block", "soft tint", "invert"]
 // Ordered so the default lands first; `wordCounts` are what the test deals.
 var WORD_COUNTS = [10, 25, 40]
 
-// Each palette preset names the role used for typed text, pending text, and
-// the caret. Roles resolve against colors.toml with a documented fallback
-// chain, so a theme missing an exotic role still renders.
+// Palette variants. These are resolved by measurement in Palette.js rather
+// than by naming theme roles: a theme assigns ANSI slots for terminal
+// compatibility, not by hue, so a preset built from "cyan" and "orange" is
+// pink-on-cream in one theme and grey in another.
+//
+//   default  the theme's foreground, a measured dim for pending, accent caret
+//   vivid    typed in the theme's primary, pending in high-contrast text
+//   random   drawn from the theme's own palette, reseeded each test, always
+//            inside the readable contrast band
 var PALETTES = [
-  { name: "default",  typed: "foreground",        pending: "muted",           caret: "accent" },
-  { name: "contrast", typed: "bright_foreground", pending: "dark_foreground", caret: "cyan" },
-  { name: "subtle",   typed: "light_foreground",  pending: "selection",       caret: "dark_foreground" },
-  { name: "warm",     typed: "cyan",              pending: "muted",           caret: "orange" },
-  { name: "cool",     typed: "foreground",        pending: "dark_foreground", caret: "green" },
-  { name: "mono",     typed: "foreground",        pending: "selection",       caret: "foreground" }
+  { name: "default", variant: "default" },
+  { name: "vivid",   variant: "vivid" },
+  { name: "random",  variant: "random" }
 ]
 
 // The config strip's rows, in h/l order.

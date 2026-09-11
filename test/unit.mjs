@@ -163,32 +163,53 @@ const eq = (name, got, want) =>
   eq("parse: junk input", Object.keys(Palette.parse("nonsense\n[section]\n")).length, 0)
 }
 
-{ // every preset must resolve against a real theme, and stay readable
-  const home = process.env.HOME
-  let colors
-  try {
-    colors = Palette.parse(readFileSync(
-      `${home}/.local/state/omarchy/current/theme/colors.toml`, "utf8"))
-  } catch {
-    colors = Palette.parse(`
-      foreground = "#c2c2b0"\nbright_foreground = "#ffffff"\nlight_foreground = "#8a8a7e"
-      dark_foreground = "#555555"\nmuted = "#666666"\nselection = "#383838"
-      background = "#222222"\naccent = "#78824b"\ncyan = "#c9a554"\nblue = "#78824b"
-      green = "#5f875f"\norange = "#8d6242"\n`)
+{ // every variant must be readable on every installed theme — the whole
+  // point of measuring rather than naming roles
+  const { readdirSync, existsSync } = await import("node:fs")
+  const dirs = ["/usr/share/omarchy/themes", `${process.env.HOME}/.config/omarchy/themes`]
+  const themes = []
+  for (const d of dirs) {
+    try {
+      for (const t of readdirSync(d))
+        if (existsSync(`${d}/${t}/colors.toml`)) themes.push([t, `${d}/${t}/colors.toml`])
+    } catch {}
   }
-  ok("theme: palette parsed", Object.keys(colors).length > 8)
+  ok("themes: found some to check", themes.length > 0)
 
-  for (const p of Settings.PALETTES) {
-    for (const slot of ["typed", "pending", "caret"]) {
-      ok(`${p.name}.${slot} (${p[slot]}) resolves`,
-         /^#[0-9a-f]{3,8}$/i.test(Palette.role(colors, p[slot])))
+  for (const [name, file] of themes) {
+    const colors = Palette.parse(readFileSync(file, "utf8"))
+    const bg = Palette.role(colors, "background") || "#000000"
+    for (const p of Settings.PALETTES) {
+      const r = Palette.resolve(colors, p.variant, name)
+      // Typed is body text and must clear WCAG AA.
+      ok(`${name}/${p.name}: typed readable`, Palette.contrast(r.typed, bg) >= 4.5)
+      // Pending is read ahead into — below ~2.4:1 it vanishes into the field.
+      ok(`${name}/${p.name}: pending visible`, Palette.contrast(r.pending, bg) >= 2.4)
+      ok(`${name}/${p.name}: caret visible`, Palette.contrast(r.caret, bg) >= 3.0)
+      // The typed/pending boundary is the only cursor the test has.
+      ok(`${name}/${p.name}: typed separates from pending`,
+         Palette.contrast(r.typed, r.pending) >= 1.35)
     }
-    // If typed and pending resolved the same, the test would be unreadable —
-    // you could not see how far you had got.
-    ok(`${p.name}: typed differs from pending`,
-       Palette.role(colors, p.typed).toLowerCase() !==
-       Palette.role(colors, p.pending).toLowerCase())
   }
+}
+
+{ // random varies by seed but is stable for one
+  const colors = Palette.parse(readFileSync(
+    "/usr/share/omarchy/themes/tokyo-night/colors.toml", "utf8"))
+  const a = Palette.resolve(colors, "random", "seed-a")
+  const b = Palette.resolve(colors, "random", "seed-a")
+  eq("random: same seed is stable", [a.typed, a.caret], [b.typed, b.caret])
+  const combos = new Set()
+  for (let i = 0; i < 12; i++) {
+    const r = Palette.resolve(colors, "random", `seed-${i}`)
+    combos.add(r.typed + r.caret)
+  }
+  ok("random: seeds give different draws", combos.size >= 4)
+}
+
+{ // contrast maths
+  eq("contrast: black on white", Math.round(Palette.contrast("#ffffff", "#000000")), 21)
+  eq("contrast: identical", Palette.contrast("#7aa2f7", "#7aa2f7"), 1)
 }
 
 { // a threadbare theme must still render through the fallback chains
