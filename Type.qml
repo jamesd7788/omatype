@@ -123,13 +123,28 @@ Item {
   property bool configMode: false
   property int configRow: 0
 
-  // Active theme palette. Omarchy rewrites these files in place on a theme
-  // change, so watching picks up a swap without a restart and the presets
-  // re-resolve against the new palette.
+  // Active theme palette.
+  //
+  // `omarchy theme set` does not rewrite the theme directory — it stages a new
+  // one and then `rm -rf`s the old and `mv`s the replacement into place. So the
+  // colors.toml a watcher is holding gets unlinked on the first switch and the
+  // watch never fires again: the test would keep painting the palette it read
+  // at startup while the bar around it had already recoloured.
+  //
+  // `current/theme.name` is rewritten in place and keeps its inode across every
+  // switch, so it is the one reliable signal. Watch that, and re-read the
+  // palette by path whenever it changes.
   FileView {
-    path: Quickshell.env("HOME") + "/.local/state/omarchy/current/theme/colors.toml"
+    id: themeNameFile
+    path: Quickshell.env("HOME") + "/.local/state/omarchy/current/theme.name"
     watchChanges: true
     onFileChanged: reload()
+    onLoaded: colorsFile.reload()
+  }
+
+  FileView {
+    id: colorsFile
+    path: Quickshell.env("HOME") + "/.local/state/omarchy/current/theme/colors.toml"
     onLoaded: root.themeColors = Palette.parse(text())
   }
 
