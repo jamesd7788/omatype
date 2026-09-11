@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Runs the unit suite. No dependencies beyond node.
+#
+# The three logic modules are QML `.pragma library` files, which node cannot
+# import directly. The runner strips that line, appends an export list, and
+# imports the result — so the tests exercise the exact source the shell loads,
+# with no build step and no duplicated copy to drift out of sync.
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+shim() { # <module> <exports...>
+  local module="$1"; shift
+  sed 's/^\.pragma library//' "$root/$module.js" > "$tmp/$module.mjs"
+  printf 'export { %s }\n' "$(IFS=,; echo "$*")" >> "$tmp/$module.mjs"
+}
+
+shim Engine   STATE create press wpm raw wordsTyped summary formatSummary elapsedMs
+shim Settings CARETS WORD_COUNTS PALETTES OPTIONS defaults sanitize wordCount palette caretStyle cycle valueLabel
+shim Palette  parse role CHAINS
+
+cp "$root/test/unit.mjs" "$tmp/unit.mjs"
+cp "$root/english.json" "$tmp/english.json"
+
+node "$tmp/unit.mjs"
