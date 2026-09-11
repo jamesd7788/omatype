@@ -107,7 +107,9 @@ const eq = (name, got, want) =>
     Engine.formatSummary(Engine.summary(done))))
   const failed = Engine.create("ab")
   Engine.press(failed, "z", 0)
-  ok("format: failure is marked", Engine.formatSummary(Engine.summary(failed)).startsWith("✗"))
+  ok("format: failure is named, not glyphed",
+     Engine.formatSummary(Engine.summary(failed)).startsWith("failed"))
+  ok("format: no glyph", !/[✗✘×]/.test(Engine.formatSummary(Engine.summary(failed))))
   ok("format: failure omits word count",
     !/words/.test(Engine.formatSummary(Engine.summary(failed))))
 }
@@ -186,9 +188,12 @@ const eq = (name, got, want) =>
       // Pending is read ahead into — below ~2.4:1 it vanishes into the field.
       ok(`${name}/${p.name}: pending visible`, Palette.contrast(r.pending, bg) >= 2.4)
       ok(`${name}/${p.name}: caret visible`, Palette.contrast(r.caret, bg) >= 3.0)
-      // The typed/pending boundary is the only cursor the test has.
-      ok(`${name}/${p.name}: typed separates from pending`,
-         Palette.contrast(r.typed, r.pending) >= 1.35)
+      // The typed/pending boundary is the only cursor the test has. `default`
+      // separates by brightness; `vivid` deliberately keeps both halves fully
+      // readable and separates by hue instead, which a contrast ratio scores
+      // as identical — so the check is perceptual, not luminance alone.
+      ok(`${name}/${p.name}: typed distinguishable from pending`,
+         Palette.distinguishable(r.typed, r.pending))
     }
   }
 }
@@ -232,6 +237,15 @@ const eq = (name, got, want) =>
   // (the only capitalised word in the source list) is deliberately removed.
   ok("words: nothing capitalised", list.every(w => w === w.toLowerCase()))
   ok("words: no bare I", !list.includes("I"))
+}
+
+{ // perceptual distance: the check that lets vivid keep both halves readable
+  eq("deltaE: identical is zero", Math.round(Palette.deltaE("#7aa2f7", "#7aa2f7")), 0)
+  ok("deltaE: blue vs lavender is visible", Palette.deltaE("#7aa2f7", "#a9b1d6") >= 18)
+  ok("distinguishable: same colour is not", !Palette.distinguishable("#dcd7ba", "#dcd7ba"))
+  ok("distinguishable: hue-only pair is", Palette.distinguishable("#7aa2f7", "#a9b1d6"))
+  ok("distinguishable: brightness-only pair is",
+     Palette.distinguishable("#ffffff", "#555555"))
 }
 
 // ----------------------------------------------------------------- report

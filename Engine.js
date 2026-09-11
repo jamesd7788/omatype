@@ -107,6 +107,9 @@ function summary(state, now) {
 
 function formatSummary(s) {
   var secs = s.seconds.toFixed(1) + "s"
-  if (s.failed) return "✗  " + s.wpm + " wpm · " + secs
+  // A failed run reports the speed it reached and says so in words. The line
+  // is already drawn in the theme's urgent colour; a glyph on top of that is
+  // one signal too many.
+  if (s.failed) return "failed · " + s.wpm + " wpm · " + secs
   return s.wpm + " wpm · " + s.raw + " raw · " + s.words + " words · " + secs
 }

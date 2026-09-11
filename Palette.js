@@ -134,6 +134,57 @@ function pickByContrast(pool, bg, target, min, max, exclude) {
   return best
 }
 
+// Perceptual distance, for the one case luminance cannot judge: two colours
+// of similar brightness but different hue. `vivid` deliberately puts typed and
+// pending at similar contrast and separates them by colour instead, which a
+// contrast ratio reports as identical.
+//
+// CIE76 in Lab. Crude next to CIEDE2000, but the decision here is only
+// "can a person tell these apart", and for that it is plenty.
+function _lab(hex) {
+  var h = String(hex || "").replace("#", "")
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]
+  var rgb = []
+  for (var i = 0; i < 3; i++) {
+    var c = parseInt(h.substr(i * 2, 2), 16) / 255
+    rgb.push(c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4))
+  }
+  // sRGB -> XYZ (D65), then XYZ -> Lab.
+  var x = (rgb[0] * 0.4124 + rgb[1] * 0.3576 + rgb[2] * 0.1805) / 0.95047
+  var y = (rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722)
+  var z = (rgb[0] * 0.0193 + rgb[1] * 0.1192 + rgb[2] * 0.9505) / 1.08883
+  var f = function (t) { return t > 0.008856 ? Math.pow(t, 1 / 3) : (7.787 * t) + (16 / 116) }
+  var fx = f(x), fy = f(y), fz = f(z)
+  return [(116 * fy) - 16, 500 * (fx - fy), 200 * (fy - fz)]
+}
+
+// Chroma, 0 (grey) to ~1 (fully saturated), from HSL. Used to prefer a
+// neutral for pending text over the theme's most colourful swatch.
+function saturation(hex) {
+  var h = String(hex || "").replace("#", "")
+  if (h.length < 6) return 0
+  var r = parseInt(h.substr(0, 2), 16) / 255
+  var g = parseInt(h.substr(2, 2), 16) / 255
+  var b = parseInt(h.substr(4, 2), 16) / 255
+  var max = Math.max(r, g, b), min = Math.min(r, g, b)
+  if (max === min) return 0
+  var l = (max + min) / 2
+  return l > 0.5 ? (max - min) / (2 - max - min) : (max - min) / (max + min)
+}
+
+function deltaE(a, b) {
+  var la = _lab(a), lb = _lab(b)
+  var dl = la[0] - lb[0], da = la[1] - lb[1], db = la[2] - lb[2]
+  return Math.sqrt(dl * dl + da * da + db * db)
+}
+
+// Two text colours are distinguishable if they differ in brightness OR in
+// hue by enough to be obvious. ~18 dE is comfortably past "just noticeable"
+// while still accepting the blue-vs-lavender pairs vivid depends on.
+function distinguishable(a, b) {
+  return contrast(a, b) >= 1.35 || deltaE(a, b) >= 18
+}
+
 // ---------------------------------------------------------- the variants
 //
 // Contrast bands, against the field background. Typed text is what you have
@@ -186,16 +237,25 @@ function resolve(colors, variant, seed) {
   // typed and untyped — which is the only cursor the test has — disappears.
   function separatedPending(typed, exclude) {
     var need = 1.45
-    var best = null, bestSep = 0
+    var best = null, bestScore = -Infinity
     for (var i = 0; i < pool.length; i++) {
       var hex = pool[i].hex
       if (exclude && exclude.indexOf(hex.toLowerCase()) !== -1) continue
       var cb = contrast(hex, bg)
       if (cb < PENDING_MIN || cb > PENDING_MAX) continue
       var sep = contrast(typed, hex)
-      if (sep > bestSep) { bestSep = sep; best = hex }
+      if (sep < need) continue
+      // Prefer a neutral. Maximising separation alone reaches for the most
+      // saturated thing in range — a red or a green — and untyped words in
+      // the theme's error colour read as a mistake rather than as text you
+      // have not got to yet.
+      var score = sep - (saturation(hex) * 3)
+      if (score > bestScore) { bestScore = score; best = hex }
     }
-    if (best && bestSep >= need) return best
+    // A swatch is only worth taking if it is reasonably neutral. Otherwise
+    // dim the typed colour instead: a desaturated version of the text reads
+    // as "not yet typed" in a way the theme's green never will.
+    if (best && saturation(best) <= 0.45) return best
     // Nothing in the palette separates enough: walk the typed colour toward
     // the background until it does.
     for (var t = 0.30; t <= 0.90; t += 0.05) {
@@ -206,11 +266,21 @@ function resolve(colors, variant, seed) {
   }
 
   if (variant === "vivid") {
-    // Typed in the theme's primary — but only if the accent can actually
-    // carry body text. Plenty of themes use a pastel or muted accent that
-    // looks right on an icon and is unreadable as a line of words.
-    var vTyped = contrast(accent, bg) >= TYPED_MIN ? accent : fg
-    var vPending = separatedPending(vTyped, [vTyped.toLowerCase()])
+    // Typed in the theme's primary, pending in plain foreground text. Both
+    // sides of the line stay fully readable and the colour alone carries the
+    // progress — the opposite of `default`, where pending recedes.
+    //
+    // Only if the accent can actually carry body text: plenty of themes use a
+    // pastel or muted accent that looks right on an icon and is unreadable as
+    // a line of words.
+    // An accent that is the same colour as the foreground (kanagawa ships
+            // exactly that) would paint the whole line one flat colour.
+            var accentOk = contrast(accent, bg) >= TYPED_MIN && distinguishable(accent, fg)
+    var vTyped = accentOk ? accent : fg
+    // With the accent usable, pending is the theme's own foreground. Without
+    // it, typed has already fallen back to that foreground, so pending has to
+    // recede instead or the two halves would be the same colour.
+    var vPending = accentOk ? fg : separatedPending(vTyped, [vTyped.toLowerCase()])
     // High-contrast text for the caret so the position is unmistakable.
     var bright = role(colors, "bright_foreground") || fg
     var vCaret = contrast(bright, bg) >= contrast(fg, bg) ? bright : fg
