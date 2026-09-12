@@ -601,34 +601,6 @@ Item {
         }
       }
 
-      // Measures option labels so each value cell can be pinned to its widest
-      // rendering. Shared by every row; `text` is set transiently during the
-      // measurement loop and nothing binds to it.
-      TextMetrics {
-        id: cellMetrics
-        font.family: Style.fontFamily
-        font.pixelSize: root.fontPx
-      }
-
-      // Total width of the config strip at its widest, so it can be centred
-      // once and then stay put.
-      readonly property real configStripWidth: {
-        var opts = Settings.OPTIONS
-        var total = 0
-        for (var i = 0; i < opts.length; i++) {
-          cellMetrics.text = opts[i].label
-          total += cellMetrics.width + Style.space(5)
-          var widest = 0
-          for (var j = 0; j < opts[i].values.length; j++) {
-            cellMetrics.text = "\u2039 " + opts[i].values[j] + " \u203a"
-            if (cellMetrics.width > widest) widest = cellMetrics.width
-          }
-          total += widest
-          if (i < opts.length - 1) total += Style.space(18)
-        }
-        return Math.ceil(total)
-      }
-
       // ------------------------------------------------------- config UI
       // Three options on one row: selected one in the caret colour with its
       // value bracketed, the others dimmed. j/k cycle the value, h/l move.
@@ -637,12 +609,7 @@ Item {
         // having an id and an unrelated property share a name in one scope
         // means every reference has to be root-qualified to stay correct.
         id: configStrip
-        // Centred once on a fixed width rather than on its own content: with
-        // every value cell pinned the total is already constant, and anchoring
-        // to content would still recentre the strip if a label ever changed.
-        width: configStripWidth
-        x: Math.round((parent.width - width) / 2)
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.centerIn: parent
         visible: root.configMode
         spacing: Style.space(18)
 
@@ -662,18 +629,6 @@ Item {
             required property var modelData
             readonly property bool sel: optionEntry.index === root.configRow
 
-            // Widest rendering this option can ever have, measured once, so
-            // the cell never resizes as values cycle.
-            readonly property real valueCellWidth: {
-              var values = optionEntry.modelData.values
-              var widest = 0
-              for (var i = 0; i < values.length; i++) {
-                cellMetrics.text = "‹ " + values[i] + " ›"
-                if (cellMetrics.width > widest) widest = cellMetrics.width
-              }
-              return Math.ceil(widest)
-            }
-
             Text {
               text: optionEntry.modelData.label
               color: optionEntry.sel ? root.caretColor : root.pendingColor
@@ -685,15 +640,9 @@ Item {
 
             Text {
               id: optionValue
-              // The value sits in a fixed-width cell wide enough for the
-              // longest option in this row, and the brackets are always
-              // present — only their opacity changes. Sizing to the current
-              // text instead made every row reflow sideways when a value
-              // changed width or the selection moved, which made the strip
-              // feel unstable while reading it.
-              width: optionEntry.valueCellWidth
-              horizontalAlignment: Text.AlignHCenter
-              text: "‹ " + Settings.valueLabel(root.config, optionEntry.modelData.key) + " ›"
+              // The brackets only appear on the selected option, so the row
+              // reads as one active control rather than three competing ones.
+              text: (optionEntry.sel ? "‹ " : "") + Settings.valueLabel(root.config, optionEntry.modelData.key) + (optionEntry.sel ? " ›" : "")
               color: optionEntry.sel ? root.typedColor : root.pendingColor
               font.family: Style.fontFamily
               font.pixelSize: root.fontPx
