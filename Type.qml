@@ -29,6 +29,8 @@ Item {
   readonly property int fieldPadding: Style.space(10)
   // How long the results line stays up before the test dismisses itself.
   readonly property int resultDwellMs: 2000
+  // A record holds longer, so the burst can play out and still be read.
+  readonly property int recordDwellMs: 3200
   // An untouched test releases its keyboard grab after this long.
   readonly property int idleReleaseMs: 10000
   // How many times `deal` may re-post itself waiting for the strip to map.
@@ -118,6 +120,8 @@ Item {
 
   property string resultText: ""
   property bool showingResult: false
+  // True for the length of one results screen when the run took the record.
+  property bool brokeRecord: false
 
   // Config mode. `configRow` is the selected option (h/l), and j/k cycle that
   // option's value. Entering pauses nothing — the run is abandoned and a
@@ -300,6 +304,7 @@ Item {
       return
     }
     root.dealRetries = 0
+    root.brokeRecord = false
     root.paletteSeed = String(Date.now()) + ":" + String(Math.random())
     root.state = Engine.create(root.fitLine(root.pool, usable))
     root.revision++
@@ -319,10 +324,25 @@ Item {
 
   function finish() {
     var summary = Engine.summary(root.state, Date.now())
+
+    // Records are per word count and only a completed run can take one.
+    // `config` is reassigned rather than mutated so the bindings that read it
+    // re-evaluate, and only a new record touches the disk.
+    var next = Settings.sanitize(root.config)
+    root.brokeRecord = Settings.recordBest(next, summary.wpm, summary.failed)
+    if (root.brokeRecord) {
+      root.config = next
+      root.saveConfig()
+    }
+
     root.resultText = Engine.formatSummary(summary)
+      + (root.brokeRecord ? "  ·  best" : "")
     root.showingResult = true
     idleGuard.stop()
+    // A record earns a longer look at the result than an ordinary run.
+    resultTimer.interval = root.brokeRecord ? root.recordDwellMs : root.resultDwellMs
     resultTimer.restart()
+    if (root.brokeRecord) burst.fire()
   }
 
   function enterConfig() {
@@ -598,6 +618,112 @@ Item {
           color: root.bg
           font.family: Style.fontFamily
           font.pixelSize: root.fontPx
+        }
+      }
+
+      // ------------------------------------------------------ record burst
+      //
+      // A pixel-art shockwave for a new best. Drawn on a Canvas in cell-sized
+      // blocks rather than with smooth gradients, so it reads as sprite work
+      // and not as a glow.
+      //
+      // It is not a radial sunburst, though that was the intent: the field is
+      // 20px tall, which is four or five blocks, and radial rays need vertical
+      // room to separate before they leave the strip — at this height they all
+      // collapse into one horizontal smear. So the rays run outward along the
+      // axis the bar actually has, with the outer rows lagging the middle. The
+      // front opens as a chevron, which carries the same read in the space
+      // available.
+      Canvas {
+        id: burst
+        anchors.fill: parent
+        // No explicit z. Declaration order already puts this above the field
+        // and below the result text, which is what is wanted; a negative z
+        // pushed it behind the field's own opaque background, where it
+        // painted every frame and was never visible.
+        visible: progress > 0 && progress < 1
+        renderStrategy: Canvas.Cooperative
+        // The burst is decoration over the result: never eat a keystroke.
+        enabled: false
+
+        property real progress: 0
+        // Block size. 3px gives ~390 x 6 cells across the field: fine enough
+        // to read as detailed sprite work rather than a handful of slabs,
+        // coarse enough that the quantisation is still the point.
+        readonly property int cell: 3
+        // Outer rows travel this much slower than the middle.
+        readonly property real stagger: 0.45
+        // A thin front. The prototype used a fatter band, but that was
+        // drawn over empty field; here the result line sits in the middle of
+        // the same strip, and anything thicker buries it.
+        readonly property real thickness: 0.14
+        // Blocks never exceed this alpha, so the words stay legible through
+        // the brightest part of the wave. Measured against a real result
+        // line: at 0.6 the wave buried the text it was celebrating.
+        readonly property real peakAlpha: 0.38
+
+        function fire() {
+          progress = 0
+          runAnim.restart()
+        }
+
+        NumberAnimation {
+          id: runAnim
+          target: burst
+          property: "progress"
+          from: 0
+          to: 1
+          duration: 900
+          easing.type: Easing.OutQuad
+        }
+
+        onProgressChanged: requestPaint()
+
+        onPaint: {
+          var ctx = getContext("2d")
+          ctx.clearRect(0, 0, width, height)
+          if (progress <= 0 || progress >= 1) return
+
+          var cols = Math.ceil(width / cell)
+          var rows = Math.ceil(height / cell)
+          var cx = (cols - 1) / 2
+          var mid = (rows - 1) / 2
+          var maxR = cols / 2
+          // Fade the whole burst as it travels so it clears the result line.
+          var life = Math.max(0, 1 - progress * 0.85)
+
+          for (var gy = 0; gy < rows; gy++) {
+            var speed = 1 - (Math.abs(gy - mid) / (mid + 1)) * stagger
+            var r = progress * maxR * speed
+            for (var gx = 0; gx < cols; gx++) {
+              var band = Math.abs(Math.abs(gx - cx) - r) / (maxR * thickness)
+              if (band > 1) continue
+              // Structure along the front comes from varying the height of
+              // each column — some are full-height lances, some short ticks.
+              // A checkerboard dropout was the first attempt and at this cell
+              // size it read as dithered static rather than sprite work.
+              // The pattern is hashed from the column index, so it is stable
+              // frame to frame and the wave does not shimmer as it travels.
+              var kind = ((gx * 2654435761) >>> 0) % 5
+              var fromMid = Math.abs(gy - mid)
+              if (kind === 0 && fromMid > 0.6) continue
+              if (kind === 1 && fromMid > 1.6) continue
+              // Thin the wave across the text's own band. The result line is
+              // vertically centred, so the rows it occupies are exactly the
+              // rows a bright block would hide it behind.
+              var overText = fromMid < 1.1
+
+              var k = Math.min(1, (1 - band) * life * 2.2)
+              // Three levels only — quantising is what makes it read as
+              // pixel art instead of a gradient.
+              k = Math.round(k * 2) / 2
+              if (k <= 0) continue
+              ctx.globalAlpha = k * peakAlpha * (overText ? 0.45 : 1)
+              ctx.fillStyle = k > 0.75 ? root.caretColor : root.typedColor
+              ctx.fillRect(gx * cell, gy * cell, cell, cell)
+            }
+          }
+          ctx.globalAlpha = 1
         }
       }
 

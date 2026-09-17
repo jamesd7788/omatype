@@ -143,9 +143,11 @@ const eq = (name, got, want) =>
   eq("sanitize: null", Settings.sanitize(null).caret, 0)
   eq("sanitize: keeps valid values", Settings.sanitize({ words: 2 }).words, 2)
   eq("sanitize: ignores unknown keys", Settings.sanitize({ nope: 1 }).words, 1)
-  for (const key of Object.keys(Settings.defaults())) {
-    const v = Settings.sanitize({ [key]: 999 })[key]
-    ok(`sanitize: ${key} stays in range`, v >= 0)
+  // The option keys are indexes into a value list; `best` is a score map,
+  // range-checked with the high-score cases above.
+  for (const opt of Settings.OPTIONS) {
+    const v = Settings.sanitize({ [opt.key]: 999 })[opt.key]
+    ok(`sanitize: ${opt.key} stays in range`, v >= 0 && v < opt.values.length)
   }
 }
 
@@ -154,6 +156,49 @@ const eq = (name, got, want) =>
   eq("labels: reads the current value", Settings.valueLabel(Settings.defaults(), "words"), "25")
   for (const opt of Settings.OPTIONS)
     ok(`options: ${opt.key} has values`, Array.isArray(opt.values) && opt.values.length > 0)
+}
+
+{ // high scores: one per word count, beaten only by a better finished run
+  const cfg = Settings.defaults()
+  eq("best: none to start", Settings.best(cfg), 0)
+
+  ok("record: first result sets it", Settings.recordBest(cfg, 62, false))
+  eq("record: stored", Settings.best(cfg), 62)
+
+  ok("record: a slower run does not", !Settings.recordBest(cfg, 61, false))
+  eq("record: previous best kept", Settings.best(cfg), 62)
+  ok("record: an equal run does not", !Settings.recordBest(cfg, 62, false))
+  ok("record: a faster run does", Settings.recordBest(cfg, 63, false))
+  eq("record: updated", Settings.best(cfg), 63)
+
+  // A failed run reports the speed reached before the mistake. That is not a
+  // result and must never take the record, however fast it was.
+  ok("record: a failed run never counts", !Settings.recordBest(cfg, 200, true))
+  eq("record: untouched by failure", Settings.best(cfg), 63)
+
+  // Records are per word count and must not leak between modes.
+  Settings.cycle(cfg, "words", 1)
+  eq("record: other mode starts empty", Settings.best(cfg), 0)
+  Settings.recordBest(cfg, 40, false)
+  eq("record: stored for this mode", Settings.best(cfg), 40)
+  Settings.cycle(cfg, "words", -1)
+  eq("record: original mode intact", Settings.best(cfg), 63)
+
+  ok("record: rejects nonsense", !Settings.recordBest(cfg, NaN, false))
+  ok("record: rejects zero", !Settings.recordBest(cfg, 0, false))
+  ok("record: rejects negative", !Settings.recordBest(cfg, -5, false))
+
+  // Keyed by the word count itself, so reordering WORD_COUNTS cannot
+  // reassign somebody's records to the wrong mode.
+  ok("record: keyed by count not index", Object.keys(cfg.best).includes("25"))
+
+  // Survives a save/load round trip, and a corrupt file cannot inject one.
+  const loaded = Settings.sanitize(JSON.parse(JSON.stringify(cfg)))
+  eq("record: survives a round trip", Settings.best(loaded), 63)
+  eq("record: junk best is dropped",
+     Settings.best(Settings.sanitize({ words: 1, best: { "25": "fast" } })), 0)
+  eq("record: negative best is dropped",
+     Settings.best(Settings.sanitize({ words: 1, best: { "25": -9 } })), 0)
 }
 
 // --------------------------------------------------------------- palette
@@ -195,6 +240,34 @@ const eq = (name, got, want) =>
       ok(`${name}/${p.name}: typed distinguishable from pending`,
          Palette.distinguishable(r.typed, r.pending))
     }
+  }
+}
+
+{ // vivid's promise: untyped words at full foreground strength, brighter
+  // than any other variant. Enforced per theme because the earlier version
+  // quietly degraded to `default` wherever the accent could not carry text.
+  const { readdirSync, existsSync } = await import("node:fs")
+  const dirs = ["/usr/share/omarchy/themes", `${process.env.HOME}/.config/omarchy/themes`]
+  const themes = []
+  for (const d of dirs) {
+    try {
+      for (const t of readdirSync(d))
+        if (existsSync(`${d}/${t}/colors.toml`)) themes.push([t, `${d}/${t}/colors.toml`])
+    } catch {}
+  }
+  for (const [name, file] of themes) {
+    const colors = Palette.parse(readFileSync(file, "utf8"))
+    const bg = Palette.role(colors, "background")
+    const fg = Palette.role(colors, "foreground")
+    const vivid = Palette.resolve(colors, "vivid", name)
+    const dflt = Palette.resolve(colors, "default", name)
+    eq(`${name}: vivid pending is the theme foreground`,
+       vivid.pending.toLowerCase(), fg.toLowerCase())
+    ok(`${name}: vivid pending outshines default`,
+       Palette.contrast(vivid.pending, bg) > Palette.contrast(dflt.pending, bg))
+    ok(`${name}: vivid is not just default`,
+       vivid.typed.toLowerCase() !== dflt.typed.toLowerCase() ||
+       vivid.pending.toLowerCase() !== dflt.pending.toLowerCase())
   }
 }
 

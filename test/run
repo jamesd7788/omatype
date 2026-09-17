@@ -18,7 +18,7 @@ shim() { # <module> <exports...>
 }
 
 shim Engine   STATE create press wpm raw wordsTyped summary formatSummary elapsedMs
-shim Settings CARETS WORD_COUNTS PALETTES OPTIONS defaults sanitize wordCount palette caretStyle cycle valueLabel
+shim Settings CARETS WORD_COUNTS PALETTES OPTIONS defaults sanitize wordCount palette caretStyle cycle valueLabel best recordBest
 shim Palette  parse role CHAINS contrast luminance resolve swatches pickByContrast mix isHex hash deltaE distinguishable saturation
 
 cp "$root/test/unit.mjs" "$tmp/unit.mjs"

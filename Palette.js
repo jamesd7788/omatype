@@ -266,21 +266,48 @@ function resolve(colors, variant, seed) {
   }
 
   if (variant === "vivid") {
-    // Typed in the theme's primary, pending in plain foreground text. Both
-    // sides of the line stay fully readable and the colour alone carries the
-    // progress — the opposite of `default`, where pending recedes.
+    // Pending is the theme's plain foreground — full-strength text, always.
+    // That is the whole point of the variant: untyped words read brighter
+    // here than in any other, and the colour of the typed half alone carries
+    // the progress. `default` is the inverse, where pending recedes.
     //
-    // Only if the accent can actually carry body text: plenty of themes use a
-    // pastel or muted accent that looks right on an icon and is unreadable as
-    // a line of words.
-    // An accent that is the same colour as the foreground (kanagawa ships
-            // exactly that) would paint the whole line one flat colour.
-            var accentOk = contrast(accent, bg) >= TYPED_MIN && distinguishable(accent, fg)
-    var vTyped = accentOk ? accent : fg
-    // With the accent usable, pending is the theme's own foreground. Without
-    // it, typed has already fallen back to that foreground, so pending has to
-    // recede instead or the two halves would be the same colour.
-    var vPending = accentOk ? fg : separatedPending(vTyped, [vTyped.toLowerCase()])
+    // Pending is fixed first and typed is chosen around it. Doing it the
+    // other way meant that a theme whose accent could not carry body text
+    // fell back to typing in the foreground, which then forced pending to
+    // dim — and vivid came out identical to default on those themes.
+    var vPending = fg
+    var vTyped = null
+
+    // The theme's primary, when it can carry a line of words and is actually
+    // distinguishable from the foreground it sits next to.
+    if (contrast(accent, bg) >= TYPED_MIN && distinguishable(accent, fg)) {
+      vTyped = accent
+    }
+
+    // Otherwise the most saturated swatch that clears AA and reads apart from
+    // the foreground: vivid is the colourful variant, so prefer chroma rather
+    // than the nearest neutral.
+    if (!vTyped) {
+      var bestSat = -1
+      for (var vi = 0; vi < pool.length; vi++) {
+        var vh = pool[vi].hex
+        if (contrast(vh, bg) < TYPED_MIN) continue
+        if (!distinguishable(vh, fg)) continue
+        var vs = saturation(vh)
+        if (vs > bestSat) { bestSat = vs; vTyped = vh }
+      }
+    }
+
+    // A palette with nothing distinguishable from its own foreground: shift
+    // the foreground itself rather than give up and paint one flat line.
+    if (!vTyped) {
+      for (var vt = 0.25; vt <= 0.75; vt += 0.05) {
+        var vm = mix(fg, accent, vt)
+        if (contrast(vm, bg) >= TYPED_MIN && distinguishable(vm, fg)) { vTyped = vm; break }
+      }
+    }
+    if (!vTyped) vTyped = accent
+
     // High-contrast text for the caret so the position is unmistakable.
     var bright = role(colors, "bright_foreground") || fg
     var vCaret = contrast(bright, bg) >= contrast(fg, bg) ? bright : fg

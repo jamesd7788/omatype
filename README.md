@@ -43,12 +43,26 @@ The clock starts on your first keystroke.
 
 ---
 
+## Records
+
+Your best wpm is kept per word count — beat it and the result line says so,
+with a pixel shockwave across the bar. Only a completed run counts: a failed
+one reports the speed it reached, which is not a result.
+
+---
+
 ## Settings
 
 ![the settings strip](docs/settings.jpg)
 
-`hjkl` or arrows. Caret style, 10/25/40 words, and six palettes. Persists to
+`hjkl` or arrows, and everything wraps. Persists to
 `~/.local/state/omarchy/type-config.json`.
+
+| option | values |
+|---|---|
+| caret | underline · outline · accent block · soft tint · invert |
+| words | 10 · 25 · 40 |
+| palette | default · vivid · random |
 
 ---
 
@@ -62,9 +76,20 @@ It wears whatever theme you're running and follows a theme change live.
 
 ![catppuccin-latte, contrast palette](docs/catppuccin-latte.jpg)
 
-Palettes remap roles — `{ typed: "cyan", pending: "muted", caret: "orange" }` —
-resolved against your theme's `colors.toml`, so they follow it rather than
-fight it.
+The three palettes are resolved by measurement against your theme's
+`colors.toml`, not by naming colours:
+
+| | |
+|---|---|
+| `default` | foreground, a measured dim for untyped, accent caret |
+| `vivid` | typed in the theme's primary, untyped at full foreground strength |
+| `random` | drawn from the theme's own swatches, reseeded every test |
+
+Typed text always clears WCAG AA against the field, untyped always stays
+visible and a clear step from typed — that boundary is the only cursor the
+test has. Naming roles instead was the first attempt and does not survive
+real themes: a theme assigns ANSI slots for terminal compatibility, not by
+hue, so `cyan` is pink in rose-pine and grey in matte-black.
 
 ---
 
@@ -80,14 +105,14 @@ The line is measured, not estimated. Word widths are cached per font and the
 assembled line is checked against the field before it's dealt.
 
 ```
-Type.qml      panel, keyboard grab, rendering
+Type.qml      panel, keyboard grab, rendering, record burst
 Engine.js     typing state machine
-Settings.js   options and persistence
-Palette.js    colors.toml parsing, role resolution
+Settings.js   options, records, persistence
+Palette.js    colors.toml parsing, contrast measurement
 ```
 
 ```bash
-test/run      # 86 assertions, no dependencies
+test/run      # 512 assertions, no dependencies
 ```
 
 ---

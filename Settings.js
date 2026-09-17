@@ -37,7 +37,10 @@ var OPTIONS = [
 ]
 
 function defaults() {
-  return { caret: 0, words: 1, palette: 0 }   // underline, 25 words, default
+  // `best` is a wpm per word count, keyed by the count itself rather than by
+  // its index, so reordering WORD_COUNTS later cannot silently reassign
+  // somebody's records to the wrong mode.
+  return { caret: 0, words: 1, palette: 0, best: {} }   // underline, 25 words, default
 }
 
 // Clamp a loaded config so a hand-edited or stale file cannot put the UI into
@@ -45,6 +48,15 @@ function defaults() {
 function sanitize(cfg) {
   var out = defaults()
   if (!cfg || typeof cfg !== "object") return out
+  if (cfg.best && typeof cfg.best === "object") {
+    for (var wi = 0; wi < WORD_COUNTS.length; wi++) {
+      var key = String(WORD_COUNTS[wi])
+      var score = Number(cfg.best[key])
+      // Finite and positive only: a corrupt or hand-edited file must not be
+      // able to park an unbeatable record in the way.
+      if (isFinite(score) && score > 0) out.best[key] = Math.round(score)
+    }
+  }
   for (var i = 0; i < OPTIONS.length; i++) {
     var opt = OPTIONS[i]
     var v = parseInt(cfg[opt.key])
@@ -54,6 +66,27 @@ function sanitize(cfg) {
 }
 
 function wordCount(cfg) { return WORD_COUNTS[cfg.words] }
+
+// Best wpm recorded for the mode this config is set to, or 0 for none yet.
+function best(cfg) {
+  var v = cfg.best ? cfg.best[String(wordCount(cfg))] : 0
+  return isFinite(v) && v > 0 ? v : 0
+}
+
+// Record `wpm` if it beats the mode's stored best. Returns true when it did,
+// which is what the run's record animation keys off. A failed run never
+// records: its wpm is the speed reached before the mistake, not a result.
+function recordBest(cfg, wpm, failed) {
+  if (failed) return false
+  var score = Math.round(Number(wpm))
+  if (!isFinite(score) || score <= 0) return false
+  var key = String(wordCount(cfg))
+  var prev = cfg.best ? cfg.best[key] : 0
+  if (isFinite(prev) && prev >= score) return false
+  if (!cfg.best) cfg.best = {}
+  cfg.best[key] = score
+  return true
+}
 function palette(cfg)   { return PALETTES[cfg.palette] }
 function caretStyle(cfg){ return cfg.caret }
 

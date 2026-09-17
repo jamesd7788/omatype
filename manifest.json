@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.jamesd7788.omatype",
   "name": "Omatype",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "jamesd7788",
   "description": "A typing test that takes over your status bar. Press a key, the bar becomes a one-line Monkeytype-style test in your current theme; type it, get your wpm, and the bar goes back to being a bar.",
   "license": "MIT",
